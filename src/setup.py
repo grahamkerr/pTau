@@ -16,16 +16,22 @@ comp_flags=['-O3','-std=c++14','-march=native','-fPIC', '-fopenmp']
 
 os.system('rm pyTau.cpp')
 
-if(plt.system() == 'Darwin'):
-    #root_dir = '/opt/local/'
-    CC = 'clang'
-    CXX= 'clang++'
-    link_opts = ["-stdlib=libc++","-bundle","-undefined","dynamic_lookup"]
-else:
-    root_dir = '/usr/'
-    CC = 'gcc'
-    CXX= 'g++'
-    link_opts = ["-shared"]
+# if(plt.system() == 'Darwin'):
+# root_dir = '/opt/local/'
+# CC = 'clang'
+# CXX= 'clang++'
+# link_opts = ["-stdlib=libc++","-bundle","-undefined","dynamic_lookup"]
+# else:
+#     root_dir = '/usr/'
+#     CC = 'gcc'
+#     CXX= 'g++'
+#     link_opts = ["-shared"]
+
+## Set up for Graham Kerr because Mac OS + a gov laptop (no admin rights) makes life harder than it should be!
+root_dir = '/Users/gskerr1/00_Packages/gcc-10.1.0/'
+CC = 'gcc-10.1'
+CXX = 'g++-10.1'
+link_opts = ["-bundle","-undefined","dynamic_lookup"]
 
 os.environ["CC"] = CC
 os.environ["CXX"] = CXX
