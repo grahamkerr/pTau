@@ -9,14 +9,15 @@ Coded by J. de la Cruz Rodriguez (ISP-SU, 2021)
 
 # *******************************************************************************
 
-def getContinuumOpacity(Tg, Pg = None, rho = None, nthreads=4, wav=[5000.0]):
+def getContinuumOpacity(Tg, Pg = None, rho = None, Ne=None, nH = None, nthreads=4, wav=np.float64([5000.0])):
     """
     getContinuumOpacity computes the background opacity due to H (H, H-, etc.. and Thompson)
     Input: 
      Tg: Gas temperature in Kelvin, 3D numpy array [ny, nx, ndep] (float32 or float64)
      Pg: Gas pressure in Barye, 3D numpy array [ny, nx, ndep] (float32 or float64)
     rho: Mass density in g/cm**3,  3D numpy array [ny, nx, ndep] (float32 or float64)
-
+     Ne: Electron density in 1/cm**3, 3D numpy array [ny, nx, ndep] (float32 or float64) [must be provided also with nH]
+     nH: 6-level H atom populations in 1/cm**3, 4D numpy array [6,ny,nx,ndep]  (float32 or float64) [must be provided also with Ne]
     Note: Pg or rho must be provided even if they are defined as keywords.
     
     Optional:
@@ -39,8 +40,8 @@ def getContinuumOpacity(Tg, Pg = None, rho = None, nthreads=4, wav=[5000.0]):
         temp = Tg
 
     
-    if((Pg is None) and (rho is None)):
-        print("ERROR, you must provide at least Pgas or Rho, exiting...")
+    if((Pg is None) and (rho is None) and (Ne is None)):
+        print("ERROR, you must provide at least Pgas or Rho or Ne, exiting...")
         return None
 
     if(Pg is not None):
@@ -76,11 +77,34 @@ def getContinuumOpacity(Tg, Pg = None, rho = None, nthreads=4, wav=[5000.0]):
             print("Unknown data type, use dtype='float64' or dtype='float32', exiting...")
             return None
 
+    elif(Ne is not None):
+        if(nH is not None):
+            
+            rcont = Ne.flags['C_CONTIGUOUS']
+            if(not rcont):
+                Nee = np.ascontiguousarray(Ne)
+            else:
+                Nee = Ne
+
+            rcont = nH.flags['C_CONTIGUOUS']
+            if(not rcont):
+                nnH = np.ascontiguousarray(nH)
+            else:
+                nnH = nH
+                
+            if(dtype == 'float32'):
+                    return pTau.getBackgroundOpacityNe_float(temp, Nee, nnH, wav, nthreads=nthreads)
+            elif(dtype == 'float64'):
+                return pTau.getBackgroundOpacityNe_double(temp, Nee, nnH, wav, nthreads=nthreads)
+            else:
+                print("Unknown data type, use dtype='float64' or dtype='float32', exiting...")
+                return None
+        
     return None
 
 # *******************************************************************************
 
-def getTau(Tg, z, Pg = None, rho = None, nthreads=4, wav=[5000.0]):
+def getTau(Tg, z, Pg = None, rho = None, Ne=None, nH = None, nthreads=4, wav=np.float64([5000.0])):
     """
     getTau computes the optical-depth scale given a set of temperature, Z-scale and [Pgas or Rho]
     Input: 
@@ -88,7 +112,9 @@ def getTau(Tg, z, Pg = None, rho = None, nthreads=4, wav=[5000.0]):
       z: z-scale, 3D numpy array [ny, nx, ndep] (float32 or float64). Note that the top of the box must be located at index 0.
      Pg: Gas pressure in Barye, 3D numpy array [ny, nx, ndep] (float32 or float64)
     rho: Mass density in g/cm**3,  3D numpy array [ny, nx, ndep] (float32 or float64)
-    
+     Ne: Electron density in 1/cm**3, 3D numpy array [ny, nx, ndep] (float32 or float64)
+     nH: 6-level H atom populations in 1/cm**3, 4D numpy array [6,ny,nx,ndep]  (float32 or float64) [must be provided also with Ne]
+
     Note: Pg or rho must be provided even if they are defined as keywords.
     
     Optional:
@@ -99,7 +125,7 @@ def getTau(Tg, z, Pg = None, rho = None, nthreads=4, wav=[5000.0]):
     """
     wav1 = np.asarray(wav, dtype='float64', order='c')
     
-    alpha = getContinuumOpacity(Tg, Pg = Pg, rho=rho, nthreads=nthreads, wav = wav1)
+    alpha = getContinuumOpacity(Tg, Pg = Pg, rho=rho, Ne=Ne, nH = nH, nthreads=nthreads, wav = wav1)
     nWav = wav1.size
 
     ny, nx, nDep = Tg.shape
@@ -151,7 +177,7 @@ def _checkDims(arr1, arr2, Name = ""):
 
 # *******************************************************************************
 
-def getOptimizedScale(temp, rho, vlos, ltau, nDep2 = None, nthreads = 4, Tcut = 50000.0, ltau_cut = 2.0, smooth_window = 1, dtype = None, vel_scal = 2.0):
+def getOptimizedScale(temp, rho, vlos, ltau, nDep2 = None, nthreads = 4, Tcut = 50000.0, ltau_cut = 2.0, smooth_window = 1, dtype = None, vel_scal = 2.0, ltau_top=-15):
     """
     getOptimizedScale computes an optimal depth-scale for radiative transfer calculations attending
     to gradients in temperature, mass density, line-of-sight velocity and optical depth-scale.
@@ -201,9 +227,9 @@ def getOptimizedScale(temp, rho, vlos, ltau, nDep2 = None, nthreads = 4, Tcut = 
     
     # Call C++ wrapper based on the type
     if(dtype == 'float64'):
-        return pTau.OptimizeGradients_double(temp1, rho1, vlos1, ltau1, nthreads = int(nthreads), nDep2 = nDep2, Tcut = Tcut, ltau_cut = ltau_cut, smooth_window = int(smooth_window), vel_scal = vel_scal)
+        return pTau.OptimizeGradients_double(temp1, rho1, vlos1, ltau1, nthreads = int(nthreads), nDep2 = nDep2, Tcut = Tcut, ltau_cut = ltau_cut, smooth_window = int(smooth_window), vel_scal = vel_scal, ltau_top = ltau_top)
     else:
-        return pTau.OptimizeGradients_float(temp1, rho1, vlos1, ltau1, nthreads = int(nthreads), nDep2 = nDep2, Tcut = Tcut, ltau_cut = ltau_cut, smooth_window = int(smooth_window), vel_scal = vel_scal)
+        return pTau.OptimizeGradients_float(temp1, rho1, vlos1, ltau1, nthreads = int(nthreads), nDep2 = nDep2, Tcut = Tcut, ltau_cut = ltau_cut, smooth_window = int(smooth_window), vel_scal = vel_scal, ltau_top = ltau_top)
 
     
 # *******************************************************************************
@@ -223,7 +249,10 @@ def OptimizeVariable(index, var, nthreads = 4, log = False):
     dtype = var.dtype
     if((dtype != 'float32') and (dtype != 'float64')):
         dtype = 'float64'
-
+        
+    if(log is not False):
+        dtype='float64'
+        
     #
     # Check that arrays are contiguous in memory and
     # all have the same dtype
@@ -296,3 +325,28 @@ def getNe(temp, Rho = None, Pg = None, nthreads=8, dtype=None):
             return pTau.getNeRho_float(temp1, Rho1, nthreads=int(nthreads))
 
 # *******************************************************************************
+
+#def getHpops_float(ar[float,ndim=3] Tg, ar[float,ndim=3] Pg, ar[float,ndim=3] Ne, int nH = 6, int nthreads = 8):
+
+def getHpops(Tg, Pg, Ne, nH = 6, nthreads=8, dtype=None):
+
+    
+
+    if(dtype is None):
+        dtype = Tg.dtype
+        if((dtype != 'float32') and (dtype != 'float64')):
+            dtype = 'float64'
+
+
+            
+    temp1  = _checkArray(Tg, dtype=dtype)
+    pg1  = _checkArray(Pg, dtype=dtype)
+    ne1  = _checkArray(Ne, dtype=dtype)
+
+    
+    if(dtype == 'float64'):
+        return pTau.getHpops_double(temp1, pg1, ne1, nH = int(nH), nthreads = int(nthreads))
+    else:
+        return pTau.getHpops_float(temp1, pg1, ne1, nH = int(nH), nthreads = int(nthreads))
+
+        
